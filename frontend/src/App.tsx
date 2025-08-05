@@ -5,8 +5,13 @@ import { ProcessedEvent } from "@/components/ActivityTimeline";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
 import { ChatMessagesView } from "@/components/ChatMessagesView";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/ThemeToggle";
+import { LanguageToggle } from "@/components/LanguageToggle";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { useTranslations } from "@/hooks/useTranslations";
 
 export default function App() {
+  const { t } = useTranslations();
   const [processedEventsTimeline, setProcessedEventsTimeline] = useState<
     ProcessedEvent[]
   >([]);
@@ -16,11 +21,22 @@ export default function App() {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const hasFinalizeEventOccurredRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // 提升表单状态到App级别，防止组件切换时重置
+  const [formState, setFormState] = useState({
+    effort: "",
+    model: "",
+    searchProvider: "",
+    llmProvider: ""
+  });
+  const [configLoaded, setConfigLoaded] = useState(false);
   const thread = useStream<{
     messages: Message[];
     initial_search_query_count: number;
     max_research_loops: number;
     reasoning_model: string;
+    search_provider: string;
+    llm_provider: string;
   }>({
     apiUrl: import.meta.env.DEV
       ? "http://localhost:2024"
@@ -28,41 +44,58 @@ export default function App() {
     assistantId: "agent",
     messagesKey: "messages",
     onUpdateEvent: (event: any) => {
-      let processedEvent: ProcessedEvent | null = null;
-      if (event.generate_query) {
-        processedEvent = {
-          title: "Generating Search Queries",
-          data: event.generate_query?.search_query?.join(", ") || "",
-        };
-      } else if (event.web_research) {
-        const sources = event.web_research.sources_gathered || [];
-        const numSources = sources.length;
-        const uniqueLabels = [
-          ...new Set(sources.map((s: any) => s.label).filter(Boolean)),
-        ];
-        const exampleLabels = uniqueLabels.slice(0, 3).join(", ");
-        processedEvent = {
-          title: "Web Research",
-          data: `Gathered ${numSources} sources. Related to: ${
-            exampleLabels || "N/A"
-          }.`,
-        };
-      } else if (event.reflection) {
-        processedEvent = {
-          title: "Reflection",
-          data: "Analysing Web Research Results",
-        };
-      } else if (event.finalize_answer) {
-        processedEvent = {
-          title: "Finalizing Answer",
-          data: "Composing and presenting the final answer.",
-        };
-        hasFinalizeEventOccurredRef.current = true;
-      }
-      if (processedEvent) {
+      try {
+        let processedEvent: ProcessedEvent | null = null;
+        if (event.generate_query) {
+          // 添加更安全的错误处理
+          const searchQueries = event.generate_query?.search_query;
+          const queriesText = Array.isArray(searchQueries) && searchQueries.length > 0 
+            ? searchQueries.join(", ") 
+            : "Generating search queries...";
+          processedEvent = {
+            title: t('generatingSearchQueries'),
+            data: queriesText,
+          };
+        } else if (event.web_research) {
+          const sources = event.web_research.sources_gathered || [];
+          const numSources = sources.length;
+          const uniqueLabels = [
+            ...new Set(sources.map((s: any) => s.label).filter(Boolean)),
+          ];
+          const exampleLabels = uniqueLabels.slice(0, 3).join(", ");
+          processedEvent = {
+            title: t('webResearch'),
+            data: `Gathered ${numSources} sources. Related to: ${
+              exampleLabels || "N/A"
+            }.`,
+          };
+        } else if (event.reflection) {
+          processedEvent = {
+            title: t('reflection'),
+            data: t('analysisResults'),
+          };
+        } else if (event.finalize_answer) {
+          processedEvent = {
+            title: t('finalizingAnswer'),
+            data: t('composingAnswer'),
+          };
+          hasFinalizeEventOccurredRef.current = true;
+        }
+        if (processedEvent) {
+          setProcessedEventsTimeline((prevEvents) => [
+            ...prevEvents,
+            processedEvent!,
+          ]);
+        }
+      } catch (error) {
+        console.error("Event processing error:", error, "Event:", event);
+        // 即使发生错误也要提供用户反馈
         setProcessedEventsTimeline((prevEvents) => [
           ...prevEvents,
-          processedEvent!,
+          {
+            title: "Processing Event",
+            data: "Event processing in progress...",
+          },
         ]);
       }
     },
@@ -83,6 +116,19 @@ export default function App() {
   }, [thread.messages]);
 
   useEffect(() => {
+    // 添加调试日志
+    console.log("状态更新:", {
+      messagesCount: thread.messages.length,
+      isLoading: thread.isLoading,
+      lastMessage: thread.messages.length > 0 ? {
+        type: thread.messages[thread.messages.length - 1].type,
+        contentLength: typeof thread.messages[thread.messages.length - 1].content === "string" 
+          ? thread.messages[thread.messages.length - 1].content.length 
+          : 0,
+        id: thread.messages[thread.messages.length - 1].id
+      } : null
+    });
+    
     if (
       hasFinalizeEventOccurredRef.current &&
       !thread.isLoading &&
@@ -99,9 +145,60 @@ export default function App() {
     }
   }, [thread.messages, thread.isLoading, processedEventsTimeline]);
 
+  // 从后端加载默认配置
+  useEffect(() => {
+    const loadDefaultConfig = async () => {
+      try {
+        const response = await fetch(
+          import.meta.env.DEV
+            ? "http://localhost:2024/api/default-config"
+            : "http://localhost:8123/api/default-config"
+        );
+        if (response.ok) {
+          const defaultConfig = await response.json();
+          setFormState({
+            effort: defaultConfig.effort,
+            model: defaultConfig.model,
+            searchProvider: defaultConfig.search_provider,
+            llmProvider: defaultConfig.llm_provider
+          });
+        } else {
+          // 如果API失败，使用硬编码默认值
+          setFormState({
+            effort: "medium",
+            model: "gemini-2.5-flash",
+            searchProvider: "google",
+            llmProvider: "GOOGLE_GEMINI"
+          });
+        }
+      } catch (error) {
+        console.error("Failed to load default config:", error);
+        // 如果请求失败，使用硬编码默认值
+        setFormState({
+          effort: "medium",
+          model: "gemini-2.5-flash",
+          searchProvider: "google",
+          llmProvider: "GOOGLE_GEMINI"
+        });
+      } finally {
+        setConfigLoaded(true);
+      }
+    };
+
+    loadDefaultConfig();
+  }, []);
+
+  const updateFormState = useCallback((updates: Partial<typeof formState>) => {
+    setFormState(prev => ({ ...prev, ...updates }));
+  }, []);
+
   const handleSubmit = useCallback(
-    (submittedInputValue: string, effort: string, model: string) => {
+    (submittedInputValue: string, effort: string, model: string, searchProvider: string, llmProvider: string) => {
       if (!submittedInputValue.trim()) return;
+      
+      // 更新表单状态，保持用户选择
+      updateFormState({ effort, model, searchProvider, llmProvider });
+      
       setProcessedEventsTimeline([]);
       hasFinalizeEventOccurredRef.current = false;
 
@@ -139,9 +236,11 @@ export default function App() {
         initial_search_query_count: initial_search_query_count,
         max_research_loops: max_research_loops,
         reasoning_model: model,
+        search_provider: searchProvider,
+        llm_provider: llmProvider,
       });
     },
-    [thread]
+    [thread, updateFormState]
   );
 
   const handleCancel = useCallback(() => {
@@ -150,38 +249,61 @@ export default function App() {
   }, [thread]);
 
   return (
-    <div className="flex h-screen bg-neutral-800 text-neutral-100 font-sans antialiased">
+    <div className="flex h-screen bg-background text-foreground font-sans antialiased">
+      {/* 主题和语言切换按钮 - 固定在右上角 */}
+      <div className="absolute top-4 right-4 z-50 flex items-center gap-2">
+        <LanguageToggle />
+        <ThemeToggle />
+      </div>
+      
       <main className="h-full w-full max-w-4xl mx-auto">
-          {thread.messages.length === 0 ? (
+          {!configLoaded ? (
+            <div className="flex flex-col items-center justify-center h-full">
+              <div className="text-center">
+                <h2 className="text-2xl font-semibold text-foreground mb-3">
+                  {t('loadingConfig')}
+                </h2>
+                <p className="text-muted-foreground">
+                  {t('gettingSettings')}
+                </p>
+              </div>
+            </div>
+          ) : thread.messages.length === 0 ? (
             <WelcomeScreen
               handleSubmit={handleSubmit}
               isLoading={thread.isLoading}
               onCancel={handleCancel}
+              formState={formState}
+              updateFormState={updateFormState}
             />
           ) : error ? (
             <div className="flex flex-col items-center justify-center h-full">
               <div className="flex flex-col items-center justify-center gap-4">
-                <h1 className="text-2xl text-red-400 font-bold">Error</h1>
-                <p className="text-red-400">{JSON.stringify(error)}</p>
+                <h1 className="text-2xl text-destructive font-bold">{t('error')}</h1>
+                <p className="text-destructive">{JSON.stringify(error)}</p>
 
                 <Button
                   variant="destructive"
                   onClick={() => window.location.reload()}
                 >
-                  Retry
+                  {t('retry')}
                 </Button>
               </div>
             </div>
           ) : (
-            <ChatMessagesView
-              messages={thread.messages}
-              isLoading={thread.isLoading}
-              scrollAreaRef={scrollAreaRef}
-              onSubmit={handleSubmit}
-              onCancel={handleCancel}
-              liveActivityEvents={processedEventsTimeline}
-              historicalActivities={historicalActivities}
-            />
+            <ErrorBoundary>
+              <ChatMessagesView
+                messages={thread.messages}
+                isLoading={thread.isLoading}
+                scrollAreaRef={scrollAreaRef}
+                onSubmit={handleSubmit}
+                onCancel={handleCancel}
+                liveActivityEvents={processedEventsTimeline}
+                historicalActivities={historicalActivities}
+                formState={formState}
+                updateFormState={updateFormState}
+              />
+            </ErrorBoundary>
           )}
       </main>
     </div>

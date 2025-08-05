@@ -28,7 +28,7 @@ services:
       retries: 5
       interval: 5s
   langgraph-api:
-    image: gemini-fullstack-langgraph
+    image: nextresearcher
     container_name: langgraph-api
     ports:
       - "8123:8000"

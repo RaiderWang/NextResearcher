@@ -87,7 +87,10 @@ Instructions:
 - You have access to all the information gathered from the previous steps.
 - You have access to the user's question.
 - Generate a high-quality answer to the user's question based on the provided summaries and the user's question.
-- Include the sources you used from the Summaries in the answer correctly, use markdown format (e.g. [apnews](https://vertexaisearch.cloud.google.com/id/1-0)). THIS IS A MUST.
+- CRITICAL: When referencing sources, you MUST use the exact format [1], [2], [3], etc. These will be automatically converted to proper URLs.
+- Do NOT try to create markdown links yourself. Simply use [1], [2], [3] where you want to cite sources.
+- Include citations throughout your answer where information comes from specific sources.
+- For example: "According to recent research [1], the technology has improved significantly [2]."
 
 User Context:
 - {research_topic}

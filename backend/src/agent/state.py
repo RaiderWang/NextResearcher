@@ -19,6 +19,13 @@ class OverallState(TypedDict):
     max_research_loops: int
     research_loop_count: int
     reasoning_model: str
+    search_provider: str
+    llm_provider: str  # 添加llm_provider字段
+    # 添加缺失的字段
+    is_sufficient: bool
+    knowledge_gap: str
+    follow_up_queries: Annotated[list, operator.add]
+    number_of_ran_queries: int
 
 
 class ReflectionState(TypedDict):
@@ -41,6 +48,7 @@ class QueryGenerationState(TypedDict):
 class WebSearchState(TypedDict):
     search_query: str
     id: str
+    search_provider: str
 
 
 @dataclass(kw_only=True)

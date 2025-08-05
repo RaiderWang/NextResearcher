@@ -6,6 +6,10 @@ frontend/coverage/
 .DS_Store
 *.local
 
+# Rick
+docs/
+.kiro/
+
 # Logs
 logs
 *.log
