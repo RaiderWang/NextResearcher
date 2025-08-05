@@ -34,15 +34,12 @@ The application uses a modular LLM provider architecture that abstracts away pro
 
 1. **Google Gemini** (`GOOGLE_GEMINI`)
    - Uses Google's Gemini API directly
-   - Supports models: `gemini-1.5-pro`, `gemini-1.5-flash`, `gemini-1.0-pro`
 
 2. **Azure OpenAI** (`AZURE_OPENAI`)
    - Uses Azure's OpenAI service
-   - Supports GPT-4, GPT-3.5-turbo, and other Azure-deployed models
 
 3. **AWS Bedrock** (`AWS_BEDROCK`)
    - Uses Amazon Bedrock service
-   - Supports Claude, Llama, and other Bedrock-available models
 
 4. **OpenAI Compatible** (`OPENAI_COMPATIBLE`)
    - Generic provider for OpenAI-compatible APIs
